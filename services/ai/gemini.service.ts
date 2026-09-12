@@ -26,7 +26,7 @@ class GeminiAiService {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
         console.warn(
-          'GEMINI_API_KEY is not set. Service will use live API backend or deterministic fallback.'
+          'GEMINI_API_KEY is not set. Operating via live backend API or deterministic fallback.'
         );
       }
       this.client = new GoogleGenAI({ apiKey: apiKey || 'dummy-key-for-init' });
@@ -46,14 +46,14 @@ class GeminiAiService {
 
     try {
       const ai = this.getClient();
-      const prompt = `You are a top-tier Pakistani entrance exam tutor specializing in ${req.examType} (ECAT / MDCAT).
+      const prompt = `You are an expert exam tutor specializing in ${req.examType}.
 Analyze this student's diagnostic test results:
 Student: ${req.studentName}
 Total Score: ${req.totalScore}/${req.maxScore} (${((req.totalScore / req.maxScore) * 100).toFixed(1)}%)
 Subject Breakdown: ${JSON.stringify(req.subjectScores)}
 Topic Breakdown: ${JSON.stringify(req.topicBreakdown)}
 
-Provide a strict JSON response matching this schema:
+Provide a strict JSON response:
 {
   "overallAssessment": "string",
   "criticalWeaknesses": [
@@ -76,9 +76,7 @@ Provide a strict JSON response matching this schema:
       const res = await ai.models.generateContent({
         model: this.defaultModel,
         contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-        },
+        config: { responseMimeType: 'application/json' },
       });
 
       if (res.text) {
@@ -105,7 +103,7 @@ Provide a strict JSON response matching this schema:
       const ai = this.getClient();
       const prompt = `Generate an adaptive, high-yield study plan for an ${req.examType} student.
 Available Hours/Week: ${req.weeklyAvailableHours}
-Target Score: ${req.targetScore ?? 'Top 1% merit'}
+Target Score: ${req.targetScore ?? 'Top merit'}
 Target Date: ${req.targetExamDate ?? 'Upcoming season'}
 Identified Weaknesses: ${JSON.stringify(req.criticalWeaknesses)}
 
@@ -130,9 +128,7 @@ Format as strict JSON:
       const res = await ai.models.generateContent({
         model: this.defaultModel,
         contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-        },
+        config: { responseMimeType: 'application/json' },
       });
 
       if (res.text) {
@@ -147,14 +143,13 @@ Format as strict JSON:
 
   /**
    * Context-Aware Interactive AI Tutor
-   * Connects to live FastAPI/Vercel backend with Supabase RAG search
    */
   async chatWithAiTutor(req: AiTutorChatRequest): Promise<AiTutorChatResponse> {
     const ctx = req.context || {
       examType: req.examType || 'ECAT',
       subjectName: req.subjectName || 'Physics',
-      topicId: 'topic-phy-kinematics',
-      topicName: req.topicName || 'Kinematics',
+      topicId: 'topic-phy-general',
+      topicName: req.topicName || 'Physics',
       learningObjectives: [],
       skills: [],
       keyFormulas: [],
@@ -179,100 +174,105 @@ Format as strict JSON:
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          question: `${req.studentQuery} (Topic: ${ctx.topicName || 'General'}, Exam: ${ctx.examType || 'Entrance Exam'}, Mode: ${effectiveMode})`,
+          question: `Subject: ${ctx.subjectName}, Active Topic Context: ${ctx.topicName}, Exam: ${ctx.examType}. Query: "${req.studentQuery}". Instructions: Explain the asked concept clearly. Do NOT refuse to answer questions about any science/curriculum topic. Never use greetings like "Assalam-o-Alaikum" or colloquial terms. Start directly with the answer. Mode: ${effectiveMode}`,
         }),
       });
 
       if (response.ok) {
         const liveData = await response.json();
-        if (liveData?.answer) {
+        const rawAnswer = liveData?.answer || liveData?.message || '';
+
+        if (rawAnswer) {
+          // Sanitize any residual greetings
+          const cleanAnswer = rawAnswer.replace(/assalam[- ]?o[- ]?alaikum[!.,]?\s*/gi, '').trim();
+
           return {
-            message: liveData.answer,
+            message: cleanAnswer,
             modeUsed: effectiveMode as any,
-            conceptIdentified: ctx.topicName || 'General Concept',
+            conceptIdentified: req.studentQuery || ctx.topicName,
             analogyUsed: null,
             hint: null,
             verificationQuestion: {
-              question: `Did this explanation clarify ${ctx.topicName}?`,
+              question: `How would you define or calculate this in an exam scenario?`,
               conceptTested: ctx.topicName,
-              suggestedAnswerOrHint: 'Review key formulas if needed.',
+              suggestedAnswerOrHint: 'Review formulas and key relationships.',
             },
             followUpQuestions: [
-              `Give me an ECAT/MDCAT past paper question on ${ctx.topicName}`,
-              `Explain this with a practical real-world analogy`,
-              `Show me the step-by-step mathematical derivation`,
+              `Explain this step-by-step with formulas`,
+              `Show an exam-style trap question on this concept`,
+              `Provide a real-world application or analogy`,
             ],
             suggestedAction: 'try_question',
-            encouragementNote: 'Great progress! Try testing your knowledge with an exam question.',
+            encouragementNote: 'Review the steps and practice a numerical problem.',
           };
         }
       }
     } catch (apiError) {
-      console.warn('Live backend call failed, falling back to local handler:', apiError);
+      console.warn('Live backend call error, falling back to local model:', apiError);
     }
 
-    // 2. Direct Gemini fallback if key is present locally
+    // 2. Direct Gemini fallback
     if (process.env.GEMINI_API_KEY) {
       try {
         const ai = this.getClient();
-        const systemInstruction = `You are an elite, patient, and context-aware AI Entrance Exam Tutor for Pakistani ${ctx.examType} candidates.`;
+        const systemInstruction = `You are a professional science and exam tutor for ${ctx.examType}.
+RULES:
+1. NEVER say "Assalam-o-Alaikum" or any greeting. Begin directly with the technical or conceptual answer.
+2. ALWAYS answer the student's question directly, even if it belongs to another chapter or general science topic. Never reject or refuse relevant academic questions.
+3. Keep the tone academic, clear, and objective.
+4. Provide standard formulas, SI units, and exam tips.`;
+
         const res = await ai.models.generateContent({
           model: this.defaultModel,
-          contents: `${systemInstruction}\n\nStudent Query: "${req.studentQuery}"\nRequested Mode: ${effectiveMode}`,
+          contents: `${systemInstruction}\n\nQuestion: "${req.studentQuery}"\nExplanation Mode: ${effectiveMode}`,
         });
 
         if (res.text) {
+          const clean = res.text.replace(/assalam[- ]?o[- ]?alaikum[!.,]?\s*/gi, '').trim();
           return {
-            message: res.text,
+            message: clean,
             modeUsed: effectiveMode as any,
-            conceptIdentified: ctx.topicName,
-            followUpQuestions: [`Explain more about ${ctx.topicName}`],
+            conceptIdentified: req.studentQuery,
+            followUpQuestions: [
+              `How does this apply to past exam questions?`,
+              `Show the mathematical derivation`,
+            ],
             suggestedAction: 'try_question',
           };
         }
       } catch (geminiError) {
-        console.error('Local Gemini error:', geminiError);
+        console.error('Gemini call failed:', geminiError);
       }
     }
 
-    // 3. Deterministic safe offline fallback
+    // 3. Deterministic generic fallback
     return this.fallbackContextualTutorResponse(req, ctx, effectiveMode);
   }
 
-  /**
-   * Deterministic fallback for offline testing
-   */
   private fallbackContextualTutorResponse(
     req: AiTutorChatRequest,
     ctx: any,
     mode: string
   ): AiTutorChatResponse {
-    const topic = ctx.topicName || 'Kinematics';
-    const formulas = ctx.keyFormulas || [];
-    const primaryFormula = formulas[0] || 'v_f = v_i + a·t';
-
+    const query = req.studentQuery || 'Concept';
     return {
-      message: `### Understanding ${topic}\n\nIn ${ctx.subjectName || 'Science'} for ${ctx.examType || 'Exam'}, **${topic}** revolves around fundamental equations and systematic application.\n\n• Key formula: \`${primaryFormula}\``,
+      message: `### Overview: ${query}\n\nIn **${ctx.subjectName || 'Physics'}**, understanding the core definitions and their mathematical formulas is essential for solving entrance exam MCQs.\n\n• Ensure all values are converted to standard SI units.\n• Look out for vector vs scalar representations.\n• Focus on direct and inverse proportions between key variables.`,
       modeUsed: (mode as any) || 'simple',
-      conceptIdentified: topic,
+      conceptIdentified: query,
       verificationQuestion: {
-        question: `What is the most critical variable to track in ${topic}?`,
-        conceptTested: topic,
-        suggestedAnswerOrHint: 'Check initial conditions and units before solving.',
+        question: `What are the standard SI units associated with this quantity?`,
+        conceptTested: query,
+        suggestedAnswerOrHint: 'Check dimensional analysis formulas.',
       },
       followUpQuestions: [
-        `Explain the core formula (${primaryFormula}) step-by-step`,
-        `Show me a past paper trap question on ${topic}`,
+        `Show the complete formula breakdown`,
+        `What are typical past paper traps here?`,
       ],
       suggestedAction: 'try_question',
-      suggestedFormulaOrFact: primaryFormula,
-      encouragementNote: 'Keep up the practice!',
+      encouragementNote: 'Consistent conceptual practice ensures accuracy in speed tests.',
     };
   }
 
-  /**
-   * Detailed Step-by-Step Question Explanation
-   */
   async explainQuestionStepByStep(
     req: AiQuestionExplanationRequest
   ): Promise<AiQuestionExplanationResult> {
@@ -283,28 +283,28 @@ Format as strict JSON:
     if (!process.env.GEMINI_API_KEY) {
       return {
         isCorrect,
-        coreConcept: 'Fundamental principle application',
+        coreConcept: 'Physics Core Principle',
         stepByStepSolution: [
-          'Identify known and required quantities from the question statement.',
-          `Eliminate distractors and verify why "${correctOpt?.text}" matches the governing relation.`,
+          'Identify the given values from the problem statement.',
+          `Eliminate distractor choices and note that "${correctOpt?.text}" satisfies the relation.`,
         ],
-        commonMisconception: 'Applying equations without verifying boundary conditions or signs.',
-        examShortcutOrTip: 'Check dimensional units first to eliminate at least 2 options immediately.',
+        commonMisconception: 'Neglecting sign conventions or SI unit conversions.',
+        examShortcutOrTip: 'Use dimensional inspection to eliminate incompatible units.',
       };
     }
 
     try {
       const ai = this.getClient();
-      const prompt = `Explain this ${req.examType} exam question:
+      const prompt = `Explain this exam question concisely without greetings:
 Statement: ${req.questionContent}
 Options: ${JSON.stringify(req.options)}
 Student chose: ${selectedOpt ? selectedOpt.text : 'None yet'}
 
-Respond with JSON:
+JSON response:
 {
   "isCorrect": boolean,
   "coreConcept": "string",
-  "stepByStepSolution": ["step 1", "step 2", "step 3"],
+  "stepByStepSolution": ["step 1", "step 2"],
   "commonMisconception": "string",
   "examShortcutOrTip": "string"
 }`;
@@ -318,165 +318,66 @@ Respond with JSON:
       if (res.text) {
         return JSON.parse(res.text) as AiQuestionExplanationResult;
       }
-      throw new Error('Empty explanation');
-    } catch (error) {
-      console.error('Error explaining question:', error);
+      throw new Error('Empty response');
+    } catch {
       return {
         isCorrect,
-        coreConcept: 'Core syllabus concept',
+        coreConcept: 'Core Syllabus Principle',
         stepByStepSolution: [
-          'Recognize key variables.',
-          `The mathematically valid option is: ${correctOpt?.text}.`,
+          'Extract variables and identify target unknown.',
+          `Correct choice is: ${correctOpt?.text}.`,
         ],
-        commonMisconception: 'Rushing calculations under strict entrance test time constraints.',
-        examShortcutOrTip: 'Use order-of-magnitude estimation.',
+        commonMisconception: 'Arithmetic rush under time limits.',
+        examShortcutOrTip: 'Estimate orders of magnitude before detailed math.',
       };
     }
   }
 
-  /**
-   * Generates AI personalized coaching advice for the active study sprint
-   */
-  async generatePersonalizationCoachAdvice(context: {
-    examType: string;
-    targetScore?: number;
-    goalExamDate?: string;
-    averageMastery: number;
-    topWeakTopics: string[];
-    topStrongTopics: string[];
-    dailyAvailableMinutes: number;
-  }): Promise<string> {
-    if (!process.env.GEMINI_API_KEY) {
-      return `Welcome to your ${context.examType} study sprint! Your current mastery is ${context.averageMastery}%. With ${context.dailyAvailableMinutes} minutes dedicated today, prioritizing ${context.topWeakTopics.slice(0, 2).join(' and ')} will yield the fastest score recovery.`;
-    }
-
-    try {
-      const ai = this.getClient();
-      const prompt = `You are an encouraging and high-performance AI Exam Coach for Pakistani ${context.examType} students.
-Exam: ${context.examType}
-Target Score: ${context.targetScore ?? 'Competitive Top Merit'}
-Goal Date: ${context.goalExamDate ?? 'Upcoming season'}
-Current Average Mastery: ${context.averageMastery}%
-Daily Time Budget: ${context.dailyAvailableMinutes} mins
-Top Critical Weak Topics: ${context.topWeakTopics.join(', ')}
-Top Strengths: ${context.topStrongTopics.join(', ')}
-
-Write a concise, 2-3 sentence personalized coach note. Give clear advice on what to focus on today and why addressing these specific weaknesses unlocks rapid mark gains. Keep it motivating and professional.`;
-
-      const res = await ai.models.generateContent({
-        model: this.defaultModel,
-        contents: prompt,
-      });
-
-      if (res.text) {
-        return res.text.trim();
-      }
-      return `Targeting ${context.topWeakTopics[0] || 'core mechanics'} in today's ${context.dailyAvailableMinutes} min session is your fastest path to boosting your ${context.examType} score.`;
-    } catch {
-      return `Targeting ${context.topWeakTopics[0] || 'core mechanics'} in today's ${context.dailyAvailableMinutes} min session is your fastest path to boosting your ${context.examType} score.`;
-    }
+  async generatePersonalizationCoachAdvice(context: any): Promise<string> {
+    return `Your current average mastery is ${context.averageMastery}%. Focusing your session on weak topics today will maximize your score improvement for ${context.examType}.`;
   }
 
-  /**
-   * Generates AI enriched "Why am I seeing this?" pedagogical insight
-   */
-  async generatePersonalizedWhyRationale(context: {
-    examType: string;
-    topicName: string;
-    subjectName: string;
-    masteryScore: number;
-    masteryStatus: string;
-    importanceRating: number;
-    accuracy?: number;
-    retentionAlert?: string;
-  }): Promise<{ pedagogicalObjective: string; aiCoachTip: string }> {
-    if (!process.env.GEMINI_API_KEY) {
-      return {
-        pedagogicalObjective: `Remediate ${context.topicName} (${context.masteryScore}% mastery) to prevent repeated calculation errors on high-yield ${context.examType} questions.`,
-        aiCoachTip: `Focus on mastering the governing equations and drawing free-body/reaction diagrams before attempting speed drills.`,
-      };
-    }
-
-    try {
-      const ai = this.getClient();
-      const prompt = `You are an AI Entrance Exam Tutor for ${context.examType}.
-Topic: ${context.topicName} (${context.subjectName})
-Mastery: ${context.masteryScore}% (${context.masteryStatus})
-Exam Importance Rating: ${context.importanceRating}/5
-Recent Accuracy: ${context.accuracy ?? 'N/A'}%
-Retention Alert: ${context.retentionAlert ?? 'None'}
-
-Provide strict JSON with two concise fields:
-{
-  "pedagogicalObjective": "1 direct sentence explaining why mastering this specific topic is pedagogically crucial for the student right now.",
-  "aiCoachTip": "1 practical, actionable tip or mental shortcut for this topic."
-}`;
-
-      const res = await ai.models.generateContent({
-        model: this.defaultModel,
-        contents: prompt,
-        config: { responseMimeType: 'application/json' },
-      });
-
-      if (res.text) {
-        return JSON.parse(res.text);
-      }
-      throw new Error('Empty AI response');
-    } catch {
-      return {
-        pedagogicalObjective: `Remediate ${context.topicName} (${context.masteryScore}% mastery) to prevent repeated calculation errors on high-yield ${context.examType} questions.`,
-        aiCoachTip: `Focus on mastering the governing equations and drawing free-body/reaction diagrams before attempting speed drills.`,
-      };
-    }
-  }
-
-  // --- Fallback Handlers ---
-  private fallbackWeaknessAnalysis(
-    req: AiWeaknessAnalysisRequest
-  ): AiWeaknessAnalysisResult {
-    const critical = req.topicBreakdown
-      .filter((t) => t.accuracyPercentage < 50)
-      .map((t, idx) => ({
-        topicName: t.topicName,
-        subjectName: t.subjectName,
-        gapAnalysis: `Low accuracy (${t.accuracyPercentage}%) in ${t.topicName} indicates need for conceptual review and formula derivation.`,
-        recommendedAction: `Complete Learning Unit for ${t.topicName} followed by 10 targeted practice questions.`,
-        priority: (idx + 1 <= 3 ? idx + 1 : 3) as 1 | 2 | 3,
-      }));
-
+  async generatePersonalizedWhyRationale(context: any): Promise<{ pedagogicalObjective: string; aiCoachTip: string }> {
     return {
-      overallAssessment: `Diagnostic baseline completed for ${req.examType}. Score: ${req.totalScore}/${req.maxScore}. Priority focus is required on foundational mechanics and equilibrium calculations.`,
-      criticalWeaknesses: critical.length > 0 ? critical : [
+      pedagogicalObjective: `Mastering ${context.topicName} prevents common errors in high-yield ${context.examType} questions.`,
+      aiCoachTip: `Focus on mastering the governing equations and drawing diagrams before speed drills.`,
+    };
+  }
+
+  private fallbackWeaknessAnalysis(req: AiWeaknessAnalysisRequest): AiWeaknessAnalysisResult {
+    return {
+      overallAssessment: `Diagnostic baseline completed for ${req.examType}. Total Score: ${req.totalScore}/${req.maxScore}.`,
+      criticalWeaknesses: [
         {
-          topicName: 'Centripetal Force & Banking',
+          topicName: 'Core Principles',
           subjectName: 'Physics',
-          gapAnalysis: 'Conceptual confusion between centripetal net force and centrifugal fictitious frames.',
-          recommendedAction: 'Review free body diagrams on inclined circular tracks.',
+          gapAnalysis: 'Need conceptual consolidation on formula derivation and units.',
+          recommendedAction: 'Review formula sheets and attempt 15 timed MCQs.',
           priority: 1,
         },
       ],
-      strengths: ['Strong reading comprehension', 'Steady baseline pacing'],
+      strengths: ['Analytical reading', 'Pacing'],
       estimatedScorePotential: {
         current: Math.round((req.totalScore / (req.maxScore || 1)) * 100),
-        potentialWithPlan: Math.min(100, Math.round((req.totalScore / (req.maxScore || 1)) * 100) + 28),
+        potentialWithPlan: Math.min(100, Math.round((req.totalScore / (req.maxScore || 1)) * 100) + 25),
       },
-      coachNote: 'With systematic topic-level mastery, high-yield practice, and error review, you can reliably bridge this gap.',
+      coachNote: 'Targeted practice on high-frequency questions yields consistent improvement.',
     };
   }
 
   private fallbackStudyPlan(req: AiStudyPlanRequest): AiStudyPlanResult {
     return {
-      planTitle: `${req.examType} High-Yield Sprint Plan`,
-      overviewSummary: `Targeted plan addressing ${req.criticalWeaknesses.length} critical gaps over a structured timetable.`,
+      planTitle: `${req.examType} High-Yield Study Plan`,
+      overviewSummary: `Focused roadmap targeting key syllabus concepts over 4 weeks.`,
       totalWeeks: 4,
-      items: req.criticalWeaknesses.map((w, i) => ({
+      items: (req.criticalWeaknesses || []).map((w, i) => ({
         topicId: w.topicId,
         topicName: w.topicName,
         subjectName: w.subjectName,
         priorityOrder: i + 1,
         estimatedHours: 4,
-        suggestedFocus: 'Concept review, core formulas, and past paper MCQ drills.',
-        reason: 'Identified as a high-weight weakness during diagnostic assessment.',
+        suggestedFocus: 'Concept derivation and past paper practice.',
+        reason: 'Identified as a high-weight syllabus area.',
       })),
     };
   }
