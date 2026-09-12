@@ -76,11 +76,9 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
 
   return (
     <div className="min-h-screen bg-stone-50 text-stone-900 flex flex-col">
-      {/* Top Student Navigation Bar */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-stone-200">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-4">
-          {/* Brand & Exam Target */}
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-3 sm:gap-4 overflow-x-auto scrollbar-none">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <Link href="/student" className="flex items-center gap-2 group shrink-0">
               <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-sm group-hover:bg-emerald-700 transition">
                 <GraduationCap className="w-4 h-4" />
@@ -97,51 +95,50 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
 
             <span className="text-stone-300 hidden sm:inline">/</span>
 
-            {/* Navigation Tabs (Desktop) */}
-            <nav className="hidden md:flex items-center gap-1 text-xs font-bold text-stone-600">
+            <nav className="hidden md:flex items-center gap-1 text-xs font-bold text-stone-600 shrink-0">
               <Link
                 href="/student"
-                className="px-2.5 py-1.5 rounded-lg hover:bg-stone-100 hover:text-stone-900 transition"
+                className="px-2.5 py-1.5 rounded-lg hover:bg-stone-100 hover:text-stone-900 transition whitespace-nowrap"
               >
                 Dashboard
               </Link>
               <Link
                 href="/student/diagnostic"
-                className="px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-900 border border-indigo-200 transition flex items-center gap-1 font-semibold"
+                className="px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-900 border border-indigo-200 transition flex items-center gap-1 font-semibold whitespace-nowrap"
               >
                 <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
                 <span>Diagnostic</span>
               </Link>
               <Link
                 href="/student/mock-exam"
-                className="px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 transition flex items-center gap-1 font-semibold"
+                className="px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 transition flex items-center gap-1 font-semibold whitespace-nowrap"
               >
                 <Award className="w-3.5 h-3.5 text-amber-600" />
                 <span>Mock Exam</span>
               </Link>
               <Link
                 href="/student/curriculum"
-                className="px-2.5 py-1.5 rounded-lg hover:bg-stone-100 hover:text-stone-900 transition"
+                className="px-2.5 py-1.5 rounded-lg hover:bg-stone-100 hover:text-stone-900 transition whitespace-nowrap"
               >
                 Curriculum
               </Link>
               <Link
                 href="/student/learn/topic-phy-kinematics"
-                className="px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-900 border border-emerald-200 transition flex items-center gap-1"
+                className="px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-900 border border-emerald-200 transition flex items-center gap-1 whitespace-nowrap"
               >
                 <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
                 <span>Learning Unit</span>
               </Link>
               <Link
                 href="/student/practice"
-                className="px-2.5 py-1.5 rounded-lg hover:bg-stone-100 hover:text-stone-900 transition"
+                className="px-2.5 py-1.5 rounded-lg hover:bg-stone-100 hover:text-stone-900 transition whitespace-nowrap"
               >
                 Practice
               </Link>
               <Link
                 href="/parent"
                 id="student-nav-parent-link"
-                className="px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-900 border border-indigo-200 hover:bg-indigo-100 transition flex items-center gap-1 font-semibold"
+                className="px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-900 border border-indigo-200 hover:bg-indigo-100 transition flex items-center gap-1 font-semibold whitespace-nowrap"
                 title="Open read-focused parent portal"
               >
                 <Users className="w-3.5 h-3.5 text-indigo-600" />
@@ -151,7 +148,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
                 <Link
                   href="/admin"
                   id="admin-cms-nav-link"
-                  className="px-2.5 py-1.5 rounded-lg bg-amber-500/15 text-amber-900 border border-amber-300/80 font-bold hover:bg-amber-500/25 transition flex items-center gap-1"
+                  className="px-2.5 py-1.5 rounded-lg bg-amber-500/15 text-amber-900 border border-amber-300/80 font-bold hover:bg-amber-500/25 transition flex items-center gap-1 whitespace-nowrap"
                 >
                   <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
                   <span>Admin CMS</span>
@@ -159,45 +156,42 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
               )}
             </nav>
 
-            <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
+            <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold whitespace-nowrap shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span>{profile?.targetExam || 'ECAT'} {profile?.examYear || 2026}</span>
             </div>
           </div>
 
-          {/* User Status & Logout */}
-          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto">
             {isDemo && (
-              <div className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium">
-                <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+              <div className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium whitespace-nowrap shrink-0">
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                 <span className="font-semibold hidden sm:inline">Demo Sandbox Active</span>
                 <span className="font-semibold sm:hidden text-[11px]">Demo</span>
-                <span className="text-[10px] hidden md:inline text-amber-700">
+                <span className="text-[10px] hidden xl:inline text-amber-700">
                   (RLS-isolated)
                 </span>
               </div>
             )}
 
-            {/* Student Profile Pill */}
-            <div className="flex items-center gap-2 pl-1 sm:pl-2 border-l border-stone-200">
+            <div className="flex items-center gap-2 pl-2 border-l border-stone-200 shrink-0">
               <div className="w-8 h-8 rounded-full bg-stone-900 text-white flex items-center justify-center text-xs font-bold shadow-sm overflow-hidden shrink-0">
                 {profile?.fullName ? profile.fullName.charAt(0) : 'S'}
               </div>
-              <div className="hidden md:flex flex-col text-left">
-                <span className="text-xs font-semibold text-stone-900 truncate max-w-[140px]">
+              <div className="hidden lg:flex flex-col text-left">
+                <span className="text-xs font-semibold text-stone-900 truncate max-w-[120px]">
                   {profile?.fullName || 'Student'}
                 </span>
-                <span className="text-[10px] text-stone-500 truncate max-w-[140px]">
+                <span className="text-[10px] text-stone-500 truncate max-w-[120px]">
                   {profile?.email || user?.email}
                 </span>
               </div>
             </div>
 
-            {/* Logout Button */}
             <button
               onClick={() => signOut()}
               id="student-logout-button"
-              className="flex items-center gap-1.5 py-1.5 px-2.5 sm:px-3 rounded-lg border border-stone-200 text-xs font-medium text-stone-700 hover:bg-stone-100 hover:text-stone-900 transition"
+              className="flex items-center gap-1.5 py-1.5 px-2.5 sm:px-3 rounded-lg border border-stone-200 text-xs font-medium text-stone-700 hover:bg-stone-100 hover:text-stone-900 transition whitespace-nowrap shrink-0"
               title="Sign Out"
             >
               <LogOut className="w-3.5 h-3.5 text-stone-500" />
@@ -206,7 +200,6 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
           </div>
         </div>
 
-        {/* Mobile Navigation Strip (Visible on mobile/tablet screens < md) */}
         <div className="md:hidden flex items-center gap-1 px-3 py-1.5 border-t border-stone-200 bg-stone-50/80 overflow-x-auto scrollbar-none text-xs font-semibold text-stone-600">
           <Link
             href="/student"
@@ -257,7 +250,6 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
         </div>
       </header>
 
-      {/* Main Student Experience Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 lg:p-8">
         {children}
       </main>
