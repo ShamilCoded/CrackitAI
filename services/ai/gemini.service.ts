@@ -16,7 +16,7 @@ import type {
  */
 class GeminiAiService {
   private client: GoogleGenAI | null = null;
-  private readonly defaultModel = 'gemini-3.8-flash';
+  private readonly defaultModel = 'gemini-2.5-flash';
 
   private getClient(): GoogleGenAI {
     if (!this.client) {
