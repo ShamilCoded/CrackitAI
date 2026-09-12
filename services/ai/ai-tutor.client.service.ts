@@ -9,6 +9,9 @@ import type {
 } from '@/types';
 import { tutorSessionService } from './tutor-session.service';
 
+const LIVE_BACKEND_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || 'https://exam-ai-backend-liart.vercel.app';
+
 export interface SendTutorMessageParams {
   studentId?: string;
   query: string;
@@ -62,7 +65,7 @@ export class AiTutorClientService {
   }
 
   /**
-   * Dispatches student query to the secure server API route with complete topic context
+   * Dispatches student query to the live FastAPI/Vercel backend with full topic context
    */
   async sendMessage(params: SendTutorMessageParams): Promise<TutorSessionMessage> {
     const {
@@ -88,52 +91,41 @@ export class AiTutorClientService {
       tutorSessionService.addMessage(sessionId, studentMessage);
     }
 
-    const payload: AiTutorChatRequest = {
-      studentId,
-      studentQuery: query,
-      mode,
-      quickAction,
-      context,
-      conversationHistory: conversationHistory.map((m) => ({
-        id: m.id,
-        role: m.role as 'student' | 'tutor',
-        content: m.content,
-        timestamp: m.timestamp,
-      })),
-      // Legacy compatibility
-      examType: context.examType,
-      subjectName: context.subjectName,
-      topicName: context.topicName,
-      currentQuestion: context.currentQuestion
-        ? {
-            statement: context.currentQuestion.statement,
-            options: context.currentQuestion.options.map((o) => o.text),
-            selectedOption: context.currentQuestion.selectedOptionText,
-            correctOption: context.currentQuestion.correctOptionText,
-            explanation: context.currentQuestion.explanation,
-          }
-        : undefined,
+    // Build context-rich prompt for the backend
+    const promptPayload = {
+      question: `Subject: ${context.subjectName || 'Science'}, Topic: ${context.topicName || 'General'}, Exam: ${context.examType || 'Entrance Test'}, Mode: ${mode}. Question/Prompt: "${query}"`,
     };
 
     try {
-      const response = await fetch('/api/ai/tutor', {
+      // Direct call to live Vercel backend
+      const response = await fetch(`${LIVE_BACKEND_URL}/ask`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(promptPayload),
       });
 
       if (response.ok) {
-        const data: AiTutorChatResponse = await response.json();
+        const data = await response.json();
+        const answerText = data.answer || data.message || '';
+
         const tutorMessage: TutorSessionMessage = {
           id: `msg-tutor-${Date.now()}`,
           role: 'tutor',
-          content: data.message,
-          mode: data.modeUsed || mode,
-          verificationQuestion: data.verificationQuestion,
-          followUpQuestions: data.followUpQuestions,
-          suggestedAction: data.suggestedAction,
+          content: answerText,
+          mode,
+          verificationQuestion: {
+            question: `Does this help clarify ${context.topicName}?`,
+            conceptTested: context.topicName,
+            suggestedAnswerOrHint: 'Review key formulas and try a practice question.',
+          },
+          followUpQuestions: [
+            `Explain the core formula in ${context.topicName}`,
+            `Give me an exam-style trap question on ${context.topicName}`,
+            `Show a practical analogy for this`,
+          ],
+          suggestedAction: 'try_question',
           timestamp: new Date().toISOString(),
         };
 
@@ -144,7 +136,7 @@ export class AiTutorClientService {
       }
       throw new Error(`Server returned status: ${response.status}`);
     } catch (err) {
-      console.warn('Network call to AI tutor route failed, generating contextual fallback:', err);
+      console.warn('Network call to live AI backend failed, falling back to local handler:', err);
       const fallback = this.generateDynamicTopicFallback(query, context, mode);
       if (sessionId) {
         tutorSessionService.addMessage(sessionId, fallback);
@@ -154,7 +146,7 @@ export class AiTutorClientService {
   }
 
   /**
-   * Dynamic fallback grounded in topic data when offline or without API keys.
+   * Dynamic fallback grounded in topic data when offline or during network latency
    */
   private generateDynamicTopicFallback(
     query: string,
@@ -165,17 +157,22 @@ export class AiTutorClientService {
     const formulas = context.keyFormulas || [];
     const primaryFormula = formulas[0] || 'Core governing relation';
     const pitfalls = context.commonPitfalls || [];
-    const primaryPitfall = pitfalls[0] || 'Mixing up sign conventions and scalar vs vector quantities.';
+    const primaryPitfall =
+      pitfalls[0] || 'Mixing up sign conventions and scalar vs vector quantities.';
 
     let content = '';
     let verificationQuestion: VerificationQuestion | undefined = undefined;
 
     if (mode === 'simple') {
-      content = `### ${topic} (Simple Explanation)\n\nIn **${topic}**, the core intuition is understanding the relationship between physical variables without getting bogged down in notation.\n\n• **Core Principle**: ${context.learningObjectives?.[0] || `Mastering the definition and SI units in ${context.subjectName}.`}\n• **Key Anchor**: \`${primaryFormula}\`\n\n*Exam Tip*: Always make sure your units match before calculating!`;
+      content = `### ${topic} (Simple Explanation)\n\nIn **${topic}**, the core intuition is understanding the relationship between physical variables without getting bogged down in notation.\n\n• **Core Principle**: ${
+        context.learningObjectives?.[0] ||
+        `Mastering the definition and SI units in ${context.subjectName}.`
+      }\n• **Key Anchor**: \`${primaryFormula}\`\n\n*Exam Tip*: Always make sure your units match before calculating!`;
       verificationQuestion = {
         question: `In ${topic}, what happens when the key driving variable is doubled?`,
         conceptTested: 'Proportionality and physical scaling',
-        suggestedAnswerOrHint: 'Check if the equation is linear or quadratic (e.g. scales by 2x or 4x).',
+        suggestedAnswerOrHint:
+          'Check if the equation is linear or quadratic (e.g. scales by 2x or 4x).',
       };
     } else if (mode === 'step_by_step') {
       content = `### Step-by-Step Problem Solving: ${topic}\n\n1. **Identify Given Data**: Extract all numerical values and convert to SI units.\n2. **Select Governing Equation**: \`${primaryFormula}\`.\n3. **Isolate the Unknown Variable**: Rearrange algebraically before substituting numbers.\n4. **Dimensional Check**: Verify that LHS units equal RHS units.`;
