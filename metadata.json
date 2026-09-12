@@ -1,0 +1,6 @@
+{
+  "name": "CrackIt.ai",
+  "description": "Adaptive AI exam preparation platform for ECAT and MDCAT students with diagnostic assessments, timed mock exams, personalized study plans, AI tutoring, and read-focused Parent Dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
