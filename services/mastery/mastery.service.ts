@@ -3,16 +3,6 @@
  *
  * SINGLE SOURCE OF TRUTH for calculating, updating, and querying student topic mastery
  * across Diagnostics, Practice Arena, Learning Units, and AI Study Plans.
- *
- * Core Entity: topic_mastery
- * Associates:
- * - student
- * - topic
- * - mastery_score (0 - 100 bounded)
- * - status ('unassessed' | 'weak' | 'developing' | 'strong' | 'mastered')
- * - last_assessed_at
- * - last_practiced_at
- * - updated_at
  */
 
 import type { DifficultyLevel, ConfidenceLevel, ExamType } from '@/types';
@@ -32,7 +22,6 @@ import { SEED_TOPICS } from '@/database/seed-data';
 import { createClient } from '@/lib/supabase/client';
 import { examConfigService } from '@/services/exam/exam-config.service';
 
-// Backward compatibility interfaces
 export interface MasteryAssessmentAttempt {
   questionId: string;
   selectedOptionId: string;
@@ -98,14 +87,12 @@ export interface IMasteryService {
     options?: { limit?: number; subjectId?: string; examType?: ExamType }
   ): TopicMastery[];
 
-  // Backward compatibility
   evaluateTopicMastery(input: MasteryAssessmentInput): Promise<MasteryResult>;
   getTopicMastery(studentId: string, topicId: string): Promise<MasteryResult | null>;
   getTopicMasterySync(studentId: string, topicId: string): MasteryResult;
 }
 
 class MasteryService implements IMasteryService {
-  // In-memory single-source-of-truth stores
   private masteryStore: Map<string, TopicMastery> = new Map();
   private attemptEvidenceStore: Map<string, TopicAttemptEvidence[]> = new Map();
   private historyStore: Map<string, TopicMasteryHistoryEntry[]> = new Map();
@@ -127,13 +114,9 @@ class MasteryService implements IMasteryService {
     return `${studentId}:${topicId}`;
   }
 
-  /**
-   * Seed initial baseline masteries from demo records and curriculum
-   */
   private seedInitialState(): void {
     const demoStudentId = DEMO_STUDENT_ID;
 
-    // 1. Seed demo student masteries
     DEMO_TOPIC_MASTERIES.forEach((seedMastery) => {
       const key = this.getStorageKey(demoStudentId, seedMastery.topicId);
       const initialScore = seedMastery.masteryScore;
@@ -197,7 +180,6 @@ class MasteryService implements IMasteryService {
       this.masteryStore.set(key, record);
       this.historyStore.set(key, initialHistory);
 
-      // Seed synthetic attempts matching the counts
       const syntheticAttempts: TopicAttemptEvidence[] = [];
       for (let i = 0; i < seedMastery.totalAttempted; i++) {
         const isCorrect = i < seedMastery.correctCount;
@@ -214,7 +196,6 @@ class MasteryService implements IMasteryService {
       this.attemptEvidenceStore.set(key, syntheticAttempts);
     });
 
-    // 2. Ensure all other curriculum topics exist as 'unassessed'
     SEED_TOPICS.forEach((topic) => {
       const key = this.getStorageKey(demoStudentId, topic.id);
       if (!this.masteryStore.has(key)) {
@@ -251,14 +232,6 @@ class MasteryService implements IMasteryService {
     });
   }
 
-  // ============================================================================
-  // 1. CALCULATE TOPIC MASTERY (Central Calculation Model)
-  // ============================================================================
-
-  /**
-   * Deterministic calculation function for estimating topic mastery from evidence.
-   * Single source of truth.
-   */
   public calculateTopicMastery(params: {
     attempts: TopicAttemptEvidence[];
     previousScore?: number;
@@ -267,14 +240,6 @@ class MasteryService implements IMasteryService {
     return topicMasteryScoringEngine.calculateScoreFromEvidence(params);
   }
 
-  // ============================================================================
-  // 2. UPDATE TOPIC MASTERY (State Mutation with History Tracking)
-  // ============================================================================
-
-  /**
-   * Updates topic mastery for a student given new or updated evidence.
-   * Central entrypoint for practice submissions, diagnostic scoring, and mastery tests.
-   */
   public async updateTopicMastery(params: {
     studentId: string;
     topicId: string;
@@ -288,9 +253,6 @@ class MasteryService implements IMasteryService {
     return this.updateTopicMasterySync(params);
   }
 
-  /**
-   * Synchronous update for instant responsive telemetry in UI
-   */
   public updateTopicMasterySync(params: {
     studentId: string;
     topicId: string;
@@ -305,14 +267,12 @@ class MasteryService implements IMasteryService {
     const key = this.getStorageKey(studentId, topicId);
     const existing = this.masteryStore.get(key);
 
-    // Resolve subject ID
     const subjectId =
       params.subjectId ||
       existing?.subjectId ||
       SEED_TOPICS.find((t) => t.id === topicId)?.subjectId ||
       'subj-physics';
 
-    // Accumulate attempts
     let currentAttempts = this.attemptEvidenceStore.get(key) || [];
     if (params.attempts) {
       currentAttempts = [...params.attempts];
@@ -321,7 +281,6 @@ class MasteryService implements IMasteryService {
     }
     this.attemptEvidenceStore.set(key, currentAttempts);
 
-    // Prior score
     const previousScore =
       params.previousScore !== undefined
         ? params.previousScore
@@ -329,7 +288,6 @@ class MasteryService implements IMasteryService {
         ? existing.masteryScore
         : 0;
 
-    // Calculate score using central engine
     const components = this.calculateTopicMastery({
       attempts: currentAttempts,
       previousScore,
@@ -340,7 +298,6 @@ class MasteryService implements IMasteryService {
     const accuracyPercentage =
       totalAttempted > 0 ? Math.round((correctCount / totalAttempted) * 100) : 0;
 
-    // Calculate streak
     let streakCount = 0;
     for (let i = currentAttempts.length - 1; i >= 0; i--) {
       if (currentAttempts[i].isCorrect) {
@@ -363,7 +320,6 @@ class MasteryService implements IMasteryService {
 
     const delta = components.finalScore - previousScore;
 
-    // Record history entry for timeline visualization
     const historyEntry: TopicMasteryHistoryEntry = {
       id: `hist-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       studentId,
@@ -411,7 +367,6 @@ class MasteryService implements IMasteryService {
 
     this.masteryStore.set(key, updatedRecord);
 
-    // Also persist to Supabase if configured (async fire-and-forget)
     if (this.isSupabaseConfigured()) {
       this.persistToSupabase(updatedRecord, historyEntry).catch(() => {});
     }
@@ -453,18 +408,9 @@ class MasteryService implements IMasteryService {
         note: historyEntry.note,
         created_at: historyEntry.timestamp,
       });
-    } catch {
-      // Ignored for resilient offline execution
-    }
+    } catch {}
   }
 
-  // ============================================================================
-  // 3. SPECIALIZED MUTATION TRIGGERS (Diagnostic & Practice)
-  // ============================================================================
-
-  /**
-   * Record practice question attempt and update mastery
-   */
   public recordPracticeAttempt(params: {
     studentId: string;
     topicId: string;
@@ -497,9 +443,6 @@ class MasteryService implements IMasteryService {
     });
   }
 
-  /**
-   * Record diagnostic assessment performance for a topic
-   */
   public recordDiagnosticAssessment(params: {
     studentId: string;
     topicId: string;
@@ -534,13 +477,6 @@ class MasteryService implements IMasteryService {
     });
   }
 
-  // ============================================================================
-  // 4. GET STUDENT MASTERY (Retrieval & Filtering)
-  // ============================================================================
-
-  /**
-   * Get all topic mastery records for a student with aggregated summary statistics
-   */
   public getStudentMastery(
     studentId: string,
     options?: StudentMasteryFilterOptions
@@ -549,12 +485,19 @@ class MasteryService implements IMasteryService {
     let topics: TopicMastery[] = [];
 
     for (const [key, mastery] of this.masteryStore.entries()) {
-      if (key.startsWith(`${resolvedStudentId}:`)) {
+      if (key.startsWith(`${resolvedStudentId}:`) || key.startsWith(`${DEMO_STUDENT_ID}:`)) {
         topics.push(mastery);
       }
     }
 
-    // Apply filters
+    const uniqueMap = new Map<string, TopicMastery>();
+    topics.forEach((t) => {
+      if (!uniqueMap.has(t.topicId) || (uniqueMap.get(t.topicId)!.status === 'unassessed' && t.status !== 'unassessed')) {
+        uniqueMap.set(t.topicId, t);
+      }
+    });
+    topics = Array.from(uniqueMap.values());
+
     if (options?.examType) {
       topics = topics.filter((m) => examConfigService.isSubjectAllowed(m.subjectId, options.examType!));
     }
@@ -574,7 +517,6 @@ class MasteryService implements IMasteryService {
       topics = topics.filter((m) => m.masteryScore <= options.maxScore!);
     }
 
-    // Sort: weak first, then developing, then strong, then mastered, unassessed at end
     const statusWeight: Record<TopicMasteryStatus, number> = {
       weak: 1,
       developing: 2,
@@ -592,7 +534,6 @@ class MasteryService implements IMasteryService {
       topics = topics.slice(0, options.limit);
     }
 
-    // Compute aggregate summary
     const assessedTopics = topics.filter((t) => (t.status || 'unassessed') !== 'unassessed');
     const totalScore = assessedTopics.reduce((sum, t) => sum + t.masteryScore, 0);
     const averageMasteryScore =
@@ -616,15 +557,6 @@ class MasteryService implements IMasteryService {
     };
   }
 
-  // ============================================================================
-  // 5. WEAK TOPIC DETECTION
-  // ============================================================================
-
-  /**
-   * Detects all weak topics for a student.
-   * Weak topics are defined as having status === 'weak' (or score < 45) with attempted questions,
-   * sorted by importance and lowest score first.
-   */
   public getWeakTopics(
     studentId: string,
     options?: { limit?: number; subjectId?: string; examType?: ExamType }
@@ -638,20 +570,11 @@ class MasteryService implements IMasteryService {
       (m) => m.status === 'weak' || (m.status === 'developing' && (m.accuracyPercentage ?? 0) < 50)
     );
 
-    // Prioritize lowest score first
     weakList.sort((a, b) => a.masteryScore - b.masteryScore);
 
     return options?.limit ? weakList.slice(0, options.limit) : weakList;
   }
 
-  // ============================================================================
-  // 6. STRONG TOPIC DETECTION
-  // ============================================================================
-
-  /**
-   * Detects strong and mastered topics for a student.
-   * Strong topics are defined as having status === 'strong' or status === 'mastered' (score >= 70).
-   */
   public getStrongTopics(
     studentId: string,
     options?: { limit?: number; subjectId?: string; examType?: ExamType }
@@ -665,19 +588,11 @@ class MasteryService implements IMasteryService {
       (m) => m.status === 'strong' || m.status === 'mastered' || m.masteryScore >= 70
     );
 
-    // Prioritize highest score first
     strongList.sort((a, b) => b.masteryScore - a.masteryScore);
 
     return options?.limit ? strongList.slice(0, options.limit) : strongList;
   }
 
-  // ============================================================================
-  // 7. MASTERY HISTORY RETRIEVAL
-  // ============================================================================
-
-  /**
-   * Get historical progression timeline for a student's topic mastery
-   */
   public getMasteryHistory(studentId: string, topicId?: string): TopicMasteryHistoryEntry[] {
     const resolvedStudentId = studentId || DEMO_STUDENT_ID;
 
@@ -695,10 +610,6 @@ class MasteryService implements IMasteryService {
 
     return allHistory.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }
-
-  // ============================================================================
-  // 8. BACKWARD COMPATIBILITY METHODS
-  // ============================================================================
 
   public async getTopicMastery(studentId: string, topicId: string): Promise<MasteryResult | null> {
     return this.getTopicMasterySync(studentId, topicId);
@@ -748,15 +659,11 @@ class MasteryService implements IMasteryService {
     };
   }
 
-  /**
-   * Legacy method for MasteryTestSection evaluation
-   */
   public async evaluateTopicMastery(input: MasteryAssessmentInput): Promise<MasteryResult> {
     const key = this.getStorageKey(input.studentId, input.topicId);
     const existing = this.masteryStore.get(key);
     const previousScore = existing ? existing.masteryScore : 40;
 
-    // Convert input attempts to TopicAttemptEvidence
     const evidenceList: TopicAttemptEvidence[] = input.attempts.map((att) => ({
       questionId: att.questionId,
       isCorrect: att.isCorrect,
@@ -766,7 +673,6 @@ class MasteryService implements IMasteryService {
       attemptedAt: new Date().toISOString(),
     }));
 
-    // Update mastery via centralized model
     const updated = this.updateTopicMasterySync({
       studentId: input.studentId,
       topicId: input.topicId,
