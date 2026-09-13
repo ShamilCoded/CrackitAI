@@ -190,8 +190,8 @@ Format as strict JSON:
             message: cleanAnswer,
             modeUsed: effectiveMode as any,
             conceptIdentified: req.studentQuery || ctx.topicName,
-            analogyUsed: null,
-            hint: null,
+            analogyUsed: undefined,
+            hint: undefined,
             verificationQuestion: {
               question: `How would you define or calculate this in an exam scenario?`,
               conceptTested: ctx.topicName,
