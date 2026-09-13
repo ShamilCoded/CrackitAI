@@ -9,7 +9,6 @@ import type {
   DifficultyLevel,
   QuestionFilterCriteria,
   ExamType,
-  QuestionStatus,
 } from '@/types';
 import { SEED_QUESTIONS, SEED_QUESTION_ATTEMPTS } from '@/database/seed-data';
 import { createClient } from '@/lib/supabase/client';
@@ -18,15 +17,6 @@ import { masteryService } from '@/services/mastery/mastery.service';
 const LIVE_BACKEND_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || 'https://exam-ai-backend-liart.vercel.app';
 
-/**
- * Question Engine Service
- *
- * Core engine responsible for:
- * 1. Live Quiz Generation via Vercel Backend /quiz
- * 2. Retrieving questions filtered by topic, difficulty, skill, exam, and status
- * 3. Recording student attempts with rich telemetry
- * 4. Dual-mode execution: Live API + Supabase PostgreSQL + in-memory fallback
- */
 class QuestionService {
   private inMemoryAttempts: QuestionAttempt[] = [...SEED_QUESTION_ATTEMPTS];
 
@@ -38,13 +28,6 @@ class QuestionService {
     );
   }
 
-  // ==========================================================================
-  // 1. LIVE BACKEND QUIZ INTEGRATION
-  // ==========================================================================
-
-  /**
-   * Fetches real-time AI generated questions from the live Vercel backend
-   */
   public async fetchLiveQuizQuestions(topic: string): Promise<Question[]> {
     try {
       const res = await fetch(`${LIVE_BACKEND_URL}/quiz`, {
@@ -96,15 +79,10 @@ class QuestionService {
           updatedAt: new Date().toISOString(),
         } as Question;
       });
-    } catch (err) {
-      console.warn('Could not fetch from live quiz endpoint, falling back to local questions:', err);
+    } catch {
       return [];
     }
   }
-
-  // ==========================================================================
-  // 2. QUESTION RETRIEVAL METHODS
-  // ==========================================================================
 
   public async getQuestionById(questionId: string): Promise<Question | null> {
     if (!this.isSupabaseConfigured()) {
@@ -140,13 +118,11 @@ class QuestionService {
     topicId: string,
     options?: QuestionQueryOptions
   ): Promise<Question[]> {
-    // 1. Try Live Quiz Backend first for topic dynamic questions
     const liveQuestions = await this.fetchLiveQuizQuestions(topicId);
     if (liveQuestions.length > 0) {
       return options?.limit ? liveQuestions.slice(0, options.limit) : liveQuestions;
     }
 
-    // 2. Fallback to Supabase
     if (this.isSupabaseConfigured()) {
       try {
         const supabase = createClient();
@@ -169,7 +145,6 @@ class QuestionService {
           return (data as any[]).map((row) => this.mapDatabaseRowToQuestion(row));
         }
       } catch {
-        // Continue to sync fallback
       }
     }
 
@@ -182,16 +157,10 @@ class QuestionService {
   ): Question[] {
     let filtered = SEED_QUESTIONS.filter((q) => q.topicId === topicId && q.isActive);
 
-    if (options?.difficulty) {
-      filtered = filtered.filter((q) => q.difficulty === options.difficulty);
-    }
-    if (options?.skillId) {
-      filtered = filtered.filter((q) => q.skillId === options.skillId);
-    }
+    if (options?.difficulty) filtered = filtered.filter((q) => q.difficulty === options.difficulty);
+    if (options?.skillId) filtered = filtered.filter((q) => q.skillId === options.skillId);
     filtered = filtered.filter((q) => (q.status || 'approved') === (options?.status || 'approved'));
-    if (options?.limit) {
-      filtered = filtered.slice(0, options.limit);
-    }
+    if (options?.limit) filtered = filtered.slice(0, options.limit);
 
     return filtered;
   }
@@ -225,7 +194,6 @@ class QuestionService {
         return (data as any[]).map((row) => this.mapDatabaseRowToQuestion(row));
       }
     } catch {
-      // Continue to sync fallback
     }
 
     return this.getQuestionsByDifficultySync(difficulty, options);
@@ -275,7 +243,6 @@ class QuestionService {
         return (data as any[]).map((row) => this.mapDatabaseRowToQuestion(row));
       }
     } catch {
-      // Continue to sync fallback
     }
 
     return this.getQuestionsBySkillSync(skillId, options);
@@ -333,10 +300,6 @@ class QuestionService {
       return true;
     });
   }
-
-  // ==========================================================================
-  // 3. ATTEMPT RECORDING
-  // ==========================================================================
 
   public async isDuplicateSubmission(clientToken: string): Promise<boolean> {
     if (!clientToken) return false;
@@ -403,7 +366,6 @@ class QuestionService {
         });
       }
     } catch {
-      // Non-blocking telemetry
     }
 
     if (!this.isSupabaseConfigured()) {
@@ -436,7 +398,6 @@ class QuestionService {
         newAttempt.attemptedAt = data.attemptedAt || data.attempted_at;
       }
     } catch {
-      // Fallback already saved in-memory
     }
 
     return newAttempt;
@@ -500,13 +461,8 @@ class QuestionService {
         studentId === '00000000-0000-0000-0000-000000000001'
     );
 
-    if (options?.questionId) {
-      attempts = attempts.filter((a) => a.questionId === options.questionId);
-    }
-
-    if (options?.limit) {
-      attempts = attempts.slice(0, options.limit);
-    }
+    if (options?.questionId) attempts = attempts.filter((a) => a.questionId === options.questionId);
+    if (options?.limit) attempts = attempts.slice(0, options.limit);
 
     return attempts;
   }
@@ -521,10 +477,6 @@ class QuestionService {
     return this.inMemoryAttempts.filter((a) => a.questionId === questionId);
   }
 
-  // ==========================================================================
-  // 4. SUBMIT ANSWER & FEEDBACK
-  // ==========================================================================
-
   public async submitAnswer(submission: SubmitAnswerInput): Promise<SubmitAnswerResult> {
     const question = await this.getQuestionById(submission.questionId);
     if (!question) {
@@ -532,97 +484,179 @@ class QuestionService {
     }
 
     if (submission.clientToken) {
-      const existingAttempt = this.inHere is an architectural review of your `QuestionService`, covering critical bugs, race conditions, edge cases, and suggested refactors.
-
----
-
-### Critical Bugs & Inconsistencies
-
-*   **Bypassing Supabase Idempotency Checks:** In `submitAnswer()`, you check duplicate tokens only against `this.inMemoryAttempts`. You already implemented `isDuplicateSubmission()`, which queries both memory and Supabase, but you never call it inside `submitAnswer()`. If a user refreshes or submits from a second tab/container, the duplicate check fails.
-*   **Dual Storage Sync Drift:** In `recordAttempt()`, the attempt is pushed into `this.inMemoryAttempts` with an ephemeral generated ID *before* calling Supabase. If Supabase succeeds, you mutate `newAttempt.id = data.id`, but if another concurrent read hits `inMemoryAttempts` in that microtask window, it references the ephemeral ID. If the database write fails, you leave the orphaned attempt in memory without reverting it.
-*   **Missing Database Implementation for Practice Queries:** `getRandomPracticeQuestions()` bypasses Supabase entirely and pulls only from `SEED_QUESTIONS`, ignoring production database rows.
-*   **Hardcoded Fallback User IDs:** In `getStudentAttemptsSync`, checking `studentId === 'demo-student-id' || studentId === '00000000-0000-0000-0000-000000000001'` exposes mock data to real users if their ID happens to match, and couples environment-specific demo IDs into service business logic.
-
----
-
-### Architectural Improvements
-
-*   **Move Option Ordering to the SQL Layer:** In `mapDatabaseRowToQuestion`, options are sorted in JavaScript memory (`row.question_options.sort(...)`). You can offload this to PostgreSQL by specifying ordering directly in the join:
-    ```typescript
-    .select(`*, question_options(*, order:display_order.asc)`)
-    ```
-*   **Encapsulate State in a Repository Layer:** Mixing remote database queries, local fallback array caching, and normalization in one class violates Single Responsibility. Decouple storage into an interface (`IQuestionRepository`) with `SupabaseQuestionRepository` and `InMemoryQuestionRepository` implementations.
-*   **Database-Level Idempotency Constraint:** Ensure your Postgres schema has a unique constraint on `client_token`:
-    ```sql
-    CREATE UNIQUE INDEX idx_question_attempts_client_token 
-    ON question_attempts (client_token) 
-    WHERE client_token IS NOT NULL;
-    ```
-    Then, replace manual pre-checks with an `ON CONFLICT DO NOTHING` or catch Postgres error code `23505` (unique violation) during insertion.
-
----
-
-### Refactored `submitAnswer` & `recordAttempt` Snippet
-
-Below is the hardened version addressing the duplicate check bug and database sync drift:
-
-```typescript
-public async submitAnswer(submission: SubmitAnswerInput): Promise<SubmitAnswerResult> {
-  const question = await this.getQuestionById(submission.questionId);
-  if (!question) {
-    throw new Error(`Question with ID ${submission.questionId} not found`);
-  }
-
-  // 1. Check duplicate submissions against both Supabase & Memory
-  if (submission.clientToken) {
-    const isDup = await this.isDuplicateSubmission(submission.clientToken);
-    if (isDup) {
-      const existing = this.inMemoryAttempts.find(a => a.clientToken === submission.clientToken);
-      return {
-        attemptId: existing?.id || 'unknown',
-        questionId: question.id,
-        studentId: submission.studentId,
-        selectedOptionId: existing?.selectedOptionId || submission.selectedOptionId,
-        isCorrect: existing ? existing.isCorrect : submission.selectedOptionId === question.correctOptionId,
-        correctOptionId: question.correctOptionId,
-        explanation: question.comprehensiveExplanation,
-        tipOrShortcut: question.tipOrShortcut,
-        timeSpentSeconds: existing?.timeSpentSeconds || submission.timeSpentSeconds,
-        confidence: existing?.confidence || submission.confidence,
-        attemptedAt: existing?.attemptedAt || new Date().toISOString(),
-        isDuplicate: true,
-      };
+      const isDup = await this.isDuplicateSubmission(submission.clientToken);
+      if (isDup) {
+        const existing = this.inMemoryAttempts.find((a) => a.clientToken === submission.clientToken);
+        return {
+          attemptId: existing?.id || 'unknown',
+          questionId: question.id,
+          studentId: submission.studentId,
+          selectedOptionId: existing?.selectedOptionId || submission.selectedOptionId,
+          isCorrect: existing ? existing.isCorrect : submission.selectedOptionId === question.correctOptionId,
+          correctOptionId: question.correctOptionId,
+          explanation: question.comprehensiveExplanation,
+          tipOrShortcut: question.tipOrShortcut,
+          timeSpentSeconds: existing?.timeSpentSeconds || submission.timeSpentSeconds,
+          confidence: existing?.confidence || submission.confidence,
+          attemptedAt: existing?.attemptedAt || new Date().toISOString(),
+          isDuplicate: true,
+        };
+      }
     }
+
+    const isCorrect = submission.selectedOptionId === question.correctOptionId;
+
+    const attempt = await this.recordAttempt({
+      studentId: submission.studentId,
+      questionId: submission.questionId,
+      selectedOptionId: submission.selectedOptionId,
+      isCorrect,
+      timeSpentSeconds: submission.timeSpentSeconds,
+      confidence: submission.confidence,
+      sourceContext: submission.sourceContext || 'practice',
+      contextId: submission.contextId,
+      clientToken: submission.clientToken,
+    });
+
+    return {
+      attemptId: attempt.id,
+      questionId: question.id,
+      studentId: submission.studentId,
+      selectedOptionId: submission.selectedOptionId,
+      isCorrect,
+      correctOptionId: question.correctOptionId,
+      explanation: question.comprehensiveExplanation,
+      tipOrShortcut: question.tipOrShortcut,
+      timeSpentSeconds: submission.timeSpentSeconds,
+      confidence: submission.confidence,
+      attemptedAt: attempt.attemptedAt,
+      isDuplicate: false,
+    };
   }
 
-  // 2. Evaluate correctness
-  const isCorrect = submission.selectedOptionId === question.correctOptionId;
+  public submitAnswerSync(submission: SubmitAnswerInput): SubmitAnswerResult {
+    const question = this.getQuestionByIdSync(submission.questionId);
+    if (!question) {
+      throw new Error(`Question with ID ${submission.questionId} not found`);
+    }
 
-  // 3. Record attempt
-  const attempt = await this.recordAttempt({
-    studentId: submission.studentId,
-    questionId: submission.questionId,
-    selectedOptionId: submission.selectedOptionId,
-    isCorrect,
-    timeSpentSeconds: submission.timeSpentSeconds,
-    confidence: submission.confidence,
-    sourceContext: submission.sourceContext || 'practice',
-    contextId: submission.contextId,
-    clientToken: submission.clientToken,
-  });
+    if (submission.clientToken) {
+      const existingAttempt = this.inMemoryAttempts.find(
+        (a) => a.clientToken === submission.clientToken
+      );
+      if (existingAttempt) {
+        return {
+          attemptId: existingAttempt.id,
+          questionId: question.id,
+          studentId: submission.studentId,
+          selectedOptionId: existingAttempt.selectedOptionId || submission.selectedOptionId,
+          isCorrect: existingAttempt.isCorrect,
+          correctOptionId: question.correctOptionId,
+          explanation: question.comprehensiveExplanation,
+          tipOrShortcut: question.tipOrShortcut,
+          timeSpentSeconds: existingAttempt.timeSpentSeconds,
+          confidence: existingAttempt.confidence,
+          attemptedAt: existingAttempt.attemptedAt,
+          isDuplicate: true,
+        };
+      }
+    }
 
-  return {
-    attemptId: attempt.id,
-    questionId: question.id,
-    studentId: submission.studentId,
-    selectedOptionId: submission.selectedOptionId,
-    isCorrect,
-    correctOptionId: question.correctOptionId,
-    explanation: question.comprehensiveExplanation,
-    tipOrShortcut: question.tipOrShortcut,
-    timeSpentSeconds: submission.timeSpentSeconds,
-    confidence: submission.confidence,
-    attemptedAt: attempt.attemptedAt,
-    isDuplicate: false,
-  };
+    const isCorrect = submission.selectedOptionId === question.correctOptionId;
+
+    const newAttempt: QuestionAttempt = {
+      id: `attempt-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      studentId: submission.studentId,
+      questionId: submission.questionId,
+      selectedOptionId: submission.selectedOptionId,
+      selectedAnswer: submission.selectedOptionId,
+      isCorrect,
+      correctness: isCorrect,
+      timeSpentSeconds: submission.timeSpentSeconds,
+      timeTaken: submission.timeSpentSeconds,
+      confidence: submission.confidence,
+      sourceContext: submission.sourceContext || 'practice',
+      contextId: submission.contextId,
+      clientToken: submission.clientToken,
+      attemptedAt: new Date().toISOString(),
+      attemptTimestamp: new Date().toISOString(),
+    };
+
+    this.inMemoryAttempts.unshift(newAttempt);
+
+    return {
+      attemptId: newAttempt.id,
+      questionId: question.id,
+      studentId: submission.studentId,
+      selectedOptionId: submission.selectedOptionId,
+      isCorrect,
+      correctOptionId: question.correctOptionId,
+      explanation: question.comprehensiveExplanation,
+      tipOrShortcut: question.tipOrShortcut,
+      timeSpentSeconds: submission.timeSpentSeconds,
+      confidence: submission.confidence,
+      attemptedAt: newAttempt.attemptedAt,
+      isDuplicate: false,
+    };
+  }
+
+  private shuffleArray<T>(array: T[]): T[] {
+    const copy = [...array];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  }
+
+  private mapDatabaseRowToQuestion(row: any): Question {
+    let options: QuestionOption[] = [];
+    if (Array.isArray(row.question_options) && row.question_options.length > 0) {
+      options = row.question_options
+        .sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0))
+        .map((opt: any) => ({
+          id: opt.id,
+          optionKey: opt.option_key,
+          text: opt.option_text,
+          optionText: opt.option_text,
+          isCorrect: opt.is_correct,
+          explanation: opt.explanation,
+          displayOrder: opt.display_order,
+        }));
+    } else if (Array.isArray(row.options)) {
+      options = row.options;
+    }
+
+    return {
+      id: row.id,
+      subjectId: row.subject_id,
+      chapterId: row.chapter_id,
+      topicId: row.topic_id,
+      subtopicId: row.subtopic_id,
+      skillId: row.skill_id,
+      learningObjectiveId: row.learning_objective_id,
+      type: (row.question_type || row.type || 'single_choice') as any,
+      questionType: (row.question_type || row.type || 'single_choice') as any,
+      difficulty: (row.difficulty || 'medium') as any,
+      status: (row.status || 'approved') as any,
+      content: row.question_text || row.content,
+      questionText: row.question_text || row.content,
+      options,
+      correctOptionId: row.correct_option_id,
+      correctAnswer: row.correct_option_id,
+      comprehensiveExplanation: row.comprehensive_explanation,
+      explanation: row.comprehensive_explanation,
+      tipOrShortcut: row.tip_or_shortcut,
+      applicableExams: (row.applicable_exams || ['ECAT', 'MDCAT']) as ExamType[],
+      pastPaperSource: row.source || row.past_paper_source,
+      source: row.source || row.past_paper_source,
+      estimatedTimeSeconds: row.estimated_time_seconds || 90,
+      estimatedTime: row.estimated_time_seconds || 90,
+      isActive: row.is_active ?? true,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
 }
+
+export const questionService = new QuestionService();
