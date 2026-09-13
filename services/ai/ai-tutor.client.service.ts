@@ -1,174 +1,146 @@
-import type {
-  ExamType,
-  AiTutorChatRequest,
-  AiTutorChatResponse,
-  ExplanationMode,
-  TutorContextPayload,
-  VerificationQuestion,
-  TutorSessionMessage,
-} from '@/types';
-import { tutorSessionService } from './tutor-session.service';
+import os
+import hashlib
+import json
+import urllib.request
+from fastapi import FastAPI, Response
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional
+from supabase import create_client
+from mangum import Mangum
 
-const LIVE_BACKEND_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || 'https://exam-ai-backend-liart.vercel.app';
+sb_url = os.getenv("SUPABASE_URL", "https://iiussffgjberpcyfyigf.supabase.co")
+sb_key = os.getenv("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlpdXNzZmZnamJlcnBjeWZ5aWdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMzAyOTQsImV4cCI6MjEwNDYwNjI5NH0.UHvSX8zOEj27An3ds4WsBkmxSV16ynjuvfGCNqM92D8")
+supabase = create_client(sb_url, sb_key)
 
-export interface SendTutorMessageParams {
-  studentId?: string;
-  query: string;
-  context: TutorContextPayload;
-  mode?: ExplanationMode;
-  quickAction?: 'explain_simply' | 'give_hint' | 'show_example' | 'test_me';
-  conversationHistory?: TutorSessionMessage[];
-  sessionId?: string;
-}
+api_key = os.getenv("GEMINI_API_KEY", "AQ.Ab8RN6JKE0BWQySBI1TH7YhmhJz-0MyttsZspgO0xVVOIFDsJA")
 
-export class AiTutorClientService {
-  getSuggestedPrompts(context: TutorContextPayload): string[] {
-    const topic = context.topicName;
-    const formulaHint = context.keyFormulas?.[0] ? ` (${context.keyFormulas[0]})` : '';
+app = FastAPI(title="MDCAT & ECAT AI Backend API", redirect_slashes=False)
 
-    return [
-      `Explain ${topic} simply for ${context.examType}`,
-      `Show the step-by-step formula breakdown${formulaHint}`,
-      `Give an intuitive analogy for ${topic}`,
-      `What are the most common exam traps in ${context.examType}?`,
-      `Test my understanding with a conceptual challenge question`,
-    ];
-  }
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
 
-  getWelcomeMessage(context: TutorContextPayload): TutorSessionMessage {
-    const formulaSnippet =
-      context.keyFormulas && context.keyFormulas.length > 0
-        ? ` Key relation: "${context.keyFormulas[0]}".`
-        : '';
+def generate_vector(text: str, dim: int = 768):
+    h = hashlib.sha256(text.encode('utf-8')).digest()
+    vals = [float((b / 255.0) * 2 - 1) for b in h]
+    repeats = (dim // len(vals)) + 1
+    return (vals * repeats)[:dim]
 
-    return {
-      id: `welcome-${context.topicId}-${Date.now()}`,
-      role: 'tutor',
-      content: `Welcome to your AI Tutor for **${context.topicName}** (${context.subjectName} - ${context.examType}).${formulaSnippet}\n\nFeel free to ask any question about this topic or general ${context.subjectName} concepts. You can request simple explanations, step-by-step derivations, or practice questions.`,
-      mode: 'simple',
-      timestamp: new Date().toISOString(),
-      followUpQuestions: [
-        `Explain ${context.topicName} simply`,
-        `Show step-by-step derivation`,
-        `Give an analogy for this`,
-        `What are the frequent traps in ${context.topicName}?`,
-      ],
-      suggestedAction: 'review_formula',
-    };
-  }
+def get_context(topic: str, category: str):
+    q_vec = generate_vector(topic)
+    try:
+        res = supabase.rpc("match_documents", {
+            "query_embedding": q_vec,
+            "match_count": 3,
+            "filter_category": category
+        }).execute()
+        return "\n\n".join([d["content"] for d in res.data]) if res.data else ""
+    except Exception:
+        return ""
 
-  async sendMessage(params: SendTutorMessageParams): Promise<TutorSessionMessage> {
-    const {
-      studentId = '00000000-0000-0000-0000-000000000001',
-      query,
-      context,
-      mode = 'simple',
-      quickAction,
-      conversationHistory = [],
-      sessionId,
-    } = params;
-
-    const studentMessage: TutorSessionMessage = {
-      id: `msg-student-${Date.now()}`,
-      role: 'student',
-      content: query,
-      mode,
-      timestamp: new Date().toISOString(),
-    };
-
-    if (sessionId) {
-      tutorSessionService.addMessage(sessionId, studentMessage);
+def call_gemini(prompt: str) -> str:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
     }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"}
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+        return data["candidates"][0]["content"]["parts"][0]["text"]
 
-    const promptPayload = {
-      topic: context.topicName || 'General',
-      question: `Subject: ${context.subjectName || 'Science'}, Context: ${context.topicName || 'General'}, Exam: ${context.examType || 'Exam'}, Mode: ${mode}. Question: "${query}". Instructions: Explain this concept thoroughly. Do not reject questions outside the current subtopic. Never greet with Assalam-o-Alaikum or greetings; answer directly with clear definitions, formulas, and examples.`,
-    };
+class QueryRequest(BaseModel):
+    topic: str
+    question: Optional[str] = None
+    category: str = "MDCAT"
 
-    try {
-      const response = await fetch(`${LIVE_BACKEND_URL}/ask`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(promptPayload),
-      });
+class QuizRequest(BaseModel):
+    topic: str
+    category: str = "MDCAT"
+    start_index: int = 1
 
-      if (response.ok) {
-        const data = await response.json();
-        let answerText = data.answer || data.message || '';
-        answerText = answerText.replace(/assalam[- ]?o[- ]?alaikum[!.,]?\s*/gi, '').trim();
+@app.get("/")
+def home():
+    return {"status": "online", "message": "Backend is running 24/7"}
 
-        const tutorMessage: TutorSessionMessage = {
-          id: `msg-tutor-${Date.now()}`,
-          role: 'tutor',
-          content: answerText,
-          mode,
-          verificationQuestion: {
-            question: `How would you apply this concept in a numerical problem?`,
-            conceptTested: context.topicName,
-            suggestedAnswerOrHint: 'Check formulas and SI units before solving.',
-          },
-          followUpQuestions: [
-            `Show a step-by-step example with numbers`,
-            `What is the most common exam distractor for this?`,
-            `How does this relate to other physics laws?`,
-          ],
-          suggestedAction: 'try_question',
-          timestamp: new Date().toISOString(),
-        };
-
-        if (sessionId) {
-          tutorSessionService.addMessage(sessionId, tutorMessage);
+@app.options("/ask")
+@app.options("/ask/")
+def options_ask():
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
         }
-        return tutorMessage;
-      }
-      throw new Error(`Server returned status: ${response.status}`);
-    } catch (err) {
-      console.warn('Live AI call failed, generating contextual fallback:', err);
-      const fallback = this.generateDynamicTopicFallback(query, context, mode);
-      if (sessionId) {
-        tutorSessionService.addMessage(sessionId, fallback);
-      }
-      return fallback;
+    )
+
+@app.post("/ask")
+@app.post("/ask/")
+def ask_tutor(req: QueryRequest):
+    user_query = req.question or req.topic
+    context = get_context(req.topic, req.category)
+    prompt = (
+        f"You are an expert entrance exam tutor for {req.category}.\n"
+        f"The student asked: '{user_query}'. Automatically correct any typos.\n"
+        "Provide a high-yield, structured conceptual explanation for exam preparation.\n\n"
+        f"Context:\n{context}\n\n"
+        f"Question:\n{user_query}\n\n"
+        "Answer:"
+    )
+    answer = call_gemini(prompt)
+    return {
+        "status": "success",
+        "category": req.category,
+        "query": user_query,
+        "answer": answer
     }
-  }
 
-  private generateDynamicTopicFallback(
-    query: string,
-    context: TutorContextPayload,
-    mode: ExplanationMode
-  ): TutorSessionMessage {
-    const formulas = context.keyFormulas || [];
-    const primaryFormula = formulas[0] || 'Governing relation';
-
-    let content = `### Concept Explanation\n\nWhen studying **${query}** within ${context.subjectName || 'Physics'}:\n\n* **Core Definition**: Relate physical quantities using standard definitions and boundary conditions.\n* **Formula Reference**: \`${primaryFormula}\`\n* **Unit Verification**: Always ensure values match standard SI units prior to solving.`;
-
-    if (mode === 'step_by_step') {
-      content = `### Step-by-Step Breakdown: ${query}\n\n1. **Identify Knowns and Unknowns**: Write down given values.\n2. **Select Governing Equation**: Choose the equation that links the variables directly.\n3. **Isolate Variable**: Solve algebraically before inserting numbers.\n4. **Check Physical Validity**: Verify that units and signs make physical sense.`;
-    } else if (mode === 'analogy') {
-      content = `### Conceptual Model for ${query}\n\nThink of this concept as balance in a closed system: any change in one variable immediately scales the opposing or resulting variable, maintaining physical equilibrium.`;
-    }
+@app.post("/quiz")
+@app.post("/quiz/")
+def generate_quiz(req: QuizRequest):
+    context = get_context(req.topic, req.category)
+    prompt = (
+        f"You are an entry test examiner for {req.category}.\n"
+        f"The student entered: '{req.topic}'. Automatically correct any typos.\n"
+        f"Generate 3 fresh, unique conceptual MCQs starting at index #{req.start_index}.\n"
+        "Return strictly a valid JSON array of objects without markdown formatting or code blocks.\n"
+        "Ensure 'correct_letter' is exactly one of: 'A', 'B', 'C', or 'D'.\n"
+        "Schema:\n"
+        "[\n"
+        "  {\n"
+        '    "question": "Question text",\n'
+        '    "options": ["Option text A", "Option text B", "Option text C", "Option text D"],\n'
+        '    "correct_letter": "A",\n'
+        '    "explanation": "Detailed explanation in English."\n'
+        "  }\n"
+        "]\n\n"
+        f"Context:\n{context}"
+    )
+    raw = call_gemini(prompt).strip()
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[1].rsplit("\n", 1)[0]
+    
+    try:
+        mcqs_data = json.loads(raw)
+    except Exception:
+        mcqs_data = []
 
     return {
-      id: `msg-tutor-fallback-${Date.now()}`,
-      role: 'tutor',
-      content,
-      mode,
-      verificationQuestion: {
-        question: 'What are the SI units of this quantity?',
-        conceptTested: query,
-        suggestedAnswerOrHint: 'Derive from fundamental base units.',
-      },
-      timestamp: new Date().toISOString(),
-      followUpQuestions: [
-        `Show the formula breakdown step-by-step`,
-        `Give an exam-style trap question on this`,
-      ],
-      suggestedAction: 'try_question',
-    };
-  }
-}
+        "status": "success",
+        "category": req.category,
+        "topic": req.topic,
+        "mcqs": mcqs_data
+    }
 
-export const aiTutorClientService = new AiTutorClientService();
+handler = Mangum(app)
