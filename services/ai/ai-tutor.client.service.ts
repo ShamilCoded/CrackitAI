@@ -90,8 +90,9 @@ export class AiTutorClientService {
       tutorSessionService.addMessage(sessionId, studentMessage);
     }
 
-    // Direct instructions: explain clearly, never refuse valid science questions, no Assalam-o-alaikum
+    // Direct instructions: explain clearly, pass required 'topic' to satisfy FastAPI backend validation
     const promptPayload = {
+      topic: context.topicName || 'General',
       question: `Subject: ${context.subjectName || 'Science'}, Context: ${context.topicName || 'General'}, Exam: ${context.examType || 'Exam'}, Mode: ${mode}. Question: "${query}". Instructions: Explain this concept thoroughly. Do not reject questions outside the current subtopic. Never greet with Assalam-o-Alaikum or greetings; answer directly with clear definitions, formulas, and examples.`,
     };
 
