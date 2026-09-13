@@ -191,7 +191,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             <button
               onClick={() => signOut()}
               id="student-logout-button"
-              className="flex items-center gap-1.5 py-1.5 px-2.5 sm:px-3 rounded-lg border border-stone-200 text-xs font-medium text-stone-700 hover:bg-stone-100 hover:text-stone-900 transition whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 py-1.5 px-2.5 sm:px-3 rounded-lg border border-stone-200 text-xs font-medium text-stone-700 hover:bg-stone-100 hover:text-stone-900 transition whitespace-nowrap"
               title="Sign Out"
             >
               <LogOut className="w-3.5 h-3.5 text-stone-500" />
