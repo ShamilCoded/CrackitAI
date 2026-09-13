@@ -10,7 +10,7 @@ import type {
 import { tutorSessionService } from './tutor-session.service';
 
 const LIVE_BACKEND_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || 'https://exam-ai-backend-git-main-nauman11.vercel.app';
+  process.env.NEXT_PUBLIC_API_BASE_URL || 'https://exam-ai-backend-liart.vercel.app';
 
 export interface SendTutorMessageParams {
   studentId?: string;
