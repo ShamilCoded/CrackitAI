@@ -31,7 +31,7 @@ function renderInlineMarkdown(text: string): React.ReactNode[] {
     ) {
       const boldText = part.slice(2, -2);
       return (
-        <strong key={index} className="font-bold text-stone-950">
+        <strong key={index} className="font-bold text-white tracking-wide">
           {renderInlineMarkdown(boldText)}
         </strong>
       );
@@ -43,7 +43,7 @@ function renderInlineMarkdown(text: string): React.ReactNode[] {
       return (
         <code
           key={index}
-          className="font-mono text-[11px] sm:text-xs text-teal-900 bg-stone-100 px-1.5 py-0.5 rounded border border-stone-300 font-semibold"
+          className="font-mono text-[11px] sm:text-xs text-teal-300 bg-neutral-800 px-1.5 py-0.5 rounded border border-neutral-700 font-semibold inline-block"
         >
           {codeText}
         </code>
@@ -56,7 +56,7 @@ function renderInlineMarkdown(text: string): React.ReactNode[] {
       return (
         <span
           key={index}
-          className="font-mono text-[11px] sm:text-xs font-bold text-emerald-900 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-300 inline-block my-0.5"
+          className="font-mono text-[11px] sm:text-xs font-medium text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-700/60 inline-block align-middle mx-1"
         >
           {mathContent}
         </span>
@@ -70,7 +70,7 @@ function renderInlineMarkdown(text: string): React.ReactNode[] {
     ) {
       const italicText = part.slice(1, -1);
       return (
-        <em key={index} className="italic text-stone-900 font-medium">
+        <em key={index} className="italic text-zinc-300 font-medium">
           {renderInlineMarkdown(italicText)}
         </em>
       );
@@ -78,7 +78,7 @@ function renderInlineMarkdown(text: string): React.ReactNode[] {
 
     // Regular plain text
     return (
-      <span key={index} className="text-stone-900">
+      <span key={index} className="text-zinc-100">
         {part}
       </span>
     );
@@ -87,7 +87,7 @@ function renderInlineMarkdown(text: string): React.ReactNode[] {
 
 /**
  * Robust, high-contrast Markdown renderer specifically tailored for tutor dialogue.
- * Guarantees explicit readable foreground colors on any background.
+ * Guarantees explicit readable foreground colors on dark background.
  */
 export function TutorMarkdownRenderer({ content, className = '' }: TutorMarkdownRendererProps) {
   if (!content) {
@@ -107,16 +107,16 @@ export function TutorMarkdownRenderer({ content, className = '' }: TutorMarkdown
       const listItems = [...currentBulletList];
       currentBulletList = [];
       elements.push(
-        <ul key={`ul-${elements.length}`} className="space-y-1.5 my-2 pl-1">
+        <ul key={`ul-${elements.length}`} className="space-y-2 my-2.5 pl-1">
           {listItems.map((item, idx) => (
             <li
               key={idx}
-              className="flex items-start gap-2 text-stone-900 text-xs sm:text-sm leading-relaxed"
+              className="flex items-start gap-2.5 text-zinc-100 text-xs sm:text-sm leading-relaxed"
             >
-              <span className="text-teal-700 font-extrabold shrink-0 mt-0.5 text-base select-none">
+              <span className="text-teal-400 font-black shrink-0 mt-0.5 text-base select-none">
                 &bull;
               </span>
-              <span className="flex-1">{renderInlineMarkdown(item)}</span>
+              <span className="flex-1 break-words">{renderInlineMarkdown(item)}</span>
             </li>
           ))}
         </ul>
@@ -127,16 +127,16 @@ export function TutorMarkdownRenderer({ content, className = '' }: TutorMarkdown
       const listItems = [...currentNumberedList];
       currentNumberedList = [];
       elements.push(
-        <ol key={`ol-${elements.length}`} className="space-y-1.5 my-2 pl-1">
+        <ol key={`ol-${elements.length}`} className="space-y-2 my-2.5 pl-1">
           {listItems.map((item, idx) => (
             <li
               key={idx}
-              className="flex items-start gap-2 text-stone-900 text-xs sm:text-sm leading-relaxed"
+              className="flex items-start gap-2 text-zinc-100 text-xs sm:text-sm leading-relaxed"
             >
-              <span className="text-teal-800 font-mono font-bold text-xs shrink-0 mt-0.5 select-none">
+              <span className="text-teal-400 font-mono font-bold text-xs shrink-0 mt-0.5 select-none">
                 {item.num}.
               </span>
-              <span className="flex-1">{renderInlineMarkdown(item.text)}</span>
+              <span className="flex-1 break-words">{renderInlineMarkdown(item.text)}</span>
             </li>
           ))}
         </ol>
@@ -155,7 +155,7 @@ export function TutorMarkdownRenderer({ content, className = '' }: TutorMarkdown
         elements.push(
           <pre
             key={`codeblock-${elements.length}`}
-            className="p-3 rounded-lg bg-stone-950 text-stone-100 text-[11px] sm:text-xs font-mono overflow-x-auto my-2 border border-stone-800 shadow-inner"
+            className="p-3 rounded-lg bg-neutral-950 text-neutral-100 text-[11px] sm:text-xs font-mono overflow-x-auto my-2 border border-neutral-800 shadow-inner"
           >
             <code>{codeBlockLines.join('\n')}</code>
           </pre>
@@ -186,7 +186,7 @@ export function TutorMarkdownRenderer({ content, className = '' }: TutorMarkdown
       elements.push(
         <h3
           key={`h3-${i}`}
-          className="text-sm font-extrabold text-stone-950 mt-3 first:mt-0 mb-1 tracking-tight"
+          className="text-sm font-bold text-white mt-3.5 first:mt-0 mb-1.5 tracking-tight border-b border-neutral-800 pb-1"
         >
           {renderInlineMarkdown(headingText)}
         </h3>
@@ -201,7 +201,7 @@ export function TutorMarkdownRenderer({ content, className = '' }: TutorMarkdown
       elements.push(
         <h2
           key={`h2-${i}`}
-          className="text-base font-extrabold text-stone-950 mt-3.5 first:mt-0 mb-1.5 tracking-tight"
+          className="text-base font-extrabold text-white mt-4 first:mt-0 mb-2 tracking-tight"
         >
           {renderInlineMarkdown(headingText)}
         </h2>
@@ -216,7 +216,7 @@ export function TutorMarkdownRenderer({ content, className = '' }: TutorMarkdown
       elements.push(
         <h4
           key={`h4-${i}`}
-          className="text-xs font-bold text-stone-950 mt-2 first:mt-0 mb-0.5"
+          className="text-xs font-bold text-teal-300 mt-2.5 first:mt-0 mb-1"
         >
           {renderInlineMarkdown(headingText)}
         </h4>
@@ -231,7 +231,7 @@ export function TutorMarkdownRenderer({ content, className = '' }: TutorMarkdown
       elements.push(
         <blockquote
           key={`quote-${i}`}
-          className="border-l-4 border-teal-600 pl-3 py-1.5 my-2 text-stone-900 italic bg-teal-50/70 rounded-r text-xs sm:text-sm font-medium"
+          className="border-l-4 border-teal-500 pl-3 py-1.5 my-2 text-zinc-200 italic bg-neutral-800/60 rounded-r text-xs sm:text-sm font-medium"
         >
           {renderInlineMarkdown(quoteText)}
         </blockquote>
@@ -258,7 +258,7 @@ export function TutorMarkdownRenderer({ content, className = '' }: TutorMarkdown
     elements.push(
       <p
         key={`p-${i}`}
-        className="leading-relaxed text-stone-900 text-xs sm:text-sm my-1.5 first:mt-0 last:mb-0"
+        className="leading-relaxed text-zinc-100 text-xs sm:text-sm my-2 first:mt-0 last:mb-0 break-words"
       >
         {renderInlineMarkdown(trimmed)}
       </p>
@@ -271,7 +271,7 @@ export function TutorMarkdownRenderer({ content, className = '' }: TutorMarkdown
     elements.push(
       <pre
         key={`codeblock-${elements.length}`}
-        className="p-3 rounded-lg bg-stone-950 text-stone-100 text-[11px] sm:text-xs font-mono overflow-x-auto my-2 border border-stone-800 shadow-inner"
+        className="p-3 rounded-lg bg-neutral-950 text-neutral-100 text-[11px] sm:text-xs font-mono overflow-x-auto my-2 border border-neutral-800 shadow-inner"
       >
         <code>{codeBlockLines.join('\n')}</code>
       </pre>
@@ -280,7 +280,7 @@ export function TutorMarkdownRenderer({ content, className = '' }: TutorMarkdown
 
   return (
     <div
-      className={`font-sans leading-relaxed text-stone-900 space-y-1.5 ${className}`}
+      className={`font-sans leading-relaxed text-zinc-100 space-y-2 ${className}`}
     >
       {elements}
     </div>
